@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("llm_client")
 
-# 从环境变量读取核心配置（与之前的.env文件对应）
+# Read core configuration from environment variables (corresponding to the previous .env file)
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_API_URL = os.getenv("LLM_API_URL")
 HKBUAPI_URL = os.getenv("API_KEY")
@@ -26,7 +26,7 @@ if not LLM_API_KEY or not LLM_API_URL:
 
 
 
-# ===================== 核心调用函数（适配不同LLM API） =====================
+# ===================== Core calling function (adapted to different LLM APIs) =====================
 def call_llm_api(
     prompt: str,
     temperature: float = 0.1,  
@@ -43,48 +43,44 @@ def call_llm_api(
     """
     logger.info(f"Model parameters when calling API: '{model}' (type: {type(model)}, length: {len(model)})")
     
-    
-    # 根据模型类型选择API配置
-    if model.strip() == "chatgpt_hkbu":  # 使用strip()去除可能的空白字符
-        # ===== 适配【HKBU校内LLM API】 =====
+    if model.strip() == "chatgpt_hkbu":  
         logger.info("使用HKBU API进行请求")
         headers = {
             "accept": "application/json",
             "Content-Type": "application/json",
-            "api-key": HKBUAPI_URL  # HKBU API使用api-key头部
+            "api-key": HKBUAPI_URL  
         }
-        # HKBU API的URL格式不同
         api_url = f"{HKBU_URL}/deployments/{HKBU_MODEL}/chat/completions?api-version={HKBU_API_VER}"
         payload = {
             "messages": [
                 {
                     "role": "system", 
-                    "content": "You are a helper! Your users are university students. Your replies should be conversational, informative, use simple words, and be straightforward."
+                    "content": "You are a professional financial AI. Only reply in English, concise and clear."
                 },
                 {
                     "role": "user",
-                    "content": prompt  # 用户提示词
+                    "content": prompt  
                 }
             ],
-            "temperature": 1,     # HKBU API固定参数
-            "max_tokens": 150,    # HKBU API固定参数
-            "top_p": 1,           # HKBU API固定参数
-            "stream": False       # HKBU API固定参数
+            "temperature": 1,     
+            "max_tokens": 150,    
+            "top_p": 1,           
+            "stream": False       
         }
     else:
-        # ===== 适配其他API（如豆包等）=====
-        logger.info(f"使用第三方API进行请求，模型: {model}")
+        # ===== Adapt to other APIs (such as Doubao, etc.)=====
+        logger.info(f"Use: {model}")
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {LLM_API_KEY}"  # 通用鉴权格式，部分API需调整（如直接传key）
+            "Authorization": f"Bearer {LLM_API_KEY}"  
         }
 
         payload = {
-            "model": model,  # 使用传入的模型名
+            "model": model,  
             "messages": [
                 {
                     "role": "user",
-                    "content": prompt  # 用户提示词
+                    "content": prompt  
                 }
             ],
             "temperature": temperature,
@@ -92,25 +88,22 @@ def call_llm_api(
         }
         api_url = LLM_API_URL
 
-    # 3. 发送请求并处理响应（核心逻辑，无需修改）
     try:
-        logger.info(f"调用LLM API，请求参数：prompt={prompt[:50]}...")  # 日志仅输出前50字符，避免过长
-        # 发送POST请求，设置超时（避免卡死）
+        logger.info(f"调用LLM API，请求参数：prompt={prompt[:50]}...")  
         response = requests.post(
             url=api_url,
             headers=headers,
             json=payload,
-            timeout=REQUEST_TIMEOUT  # 使用可配置的超时时间
+            timeout=REQUEST_TIMEOUT  
         )
-        # 校验响应状态码（200=成功）
+        
         response.raise_for_status()
-        # 解析JSON响应
+
         response_data = response.json()
         logger.info(f"LLM API响应成功，状态码：{response.status_code}")
 
-        # 4. 提取响应文本（根据不同API调整）
+        
         if model.strip() == "chatgpt_hkbu":
-            # ===== 适配HKBU校内API的响应格式 =====
             if "choices" in response_data and len(response_data["choices"]) > 0:
                 llm_response = response_data["choices"][0]["message"]["content"].strip()
             elif "response" in response_data:
@@ -118,44 +111,40 @@ def call_llm_api(
             elif "text" in response_data:
                 llm_response = response_data["text"].strip()
             else:
-                # 兜底：若响应格式未知，返回原始文本（便于调试）
                 llm_response = str(response_data)
-                logger.warning(f"HKBU API响应格式未适配，原始响应：{llm_response[:200]}...")
+                logger.warning(f"response do not contain expected fields, original response:{llm_response[:200]}...")
         else:
-            # ===== 适配其他API的响应格式 =====
             if "choices" in response_data:
-                # 其他API响应示例：{"choices": [{"message": {"content": "回答内容"}}]}
                 llm_response = response_data["choices"][0]["message"]["content"].strip()
             else:
-                # 兜底：若响应格式未知，返回原始文本（便于调试）
                 llm_response = str(response_data)
-                logger.warning(f"第三方API响应格式未适配，原始响应：{llm_response[:200]}...")
+                logger.warning(f"response do not contain expected fields, original response:{llm_response[:200]}...")
 
         return llm_response
 
-    # 5. 异常处理（覆盖所有常见错误，避免机器人崩溃）
+    # 5. Exception handling (covers all common errors to avoid robot crashes)
     except requests.exceptions.Timeout:
-        logger.error(f"LLM API调用超时（超过{REQUEST_TIMEOUT}秒）")
-        return "抱歉，金融智能体请求超时，请稍后再试～"
+        logger.error(f"LLM API call timeout (more than {REQUEST_TIMEOUT} seconds)")
+        return "Sorry, the financial agent request timed out, please try again later~"
     except requests.exceptions.ConnectionError as e:
-        logger.error(f"LLM API连接失败（网络问题/URL错误）: {str(e)}")
+        logger.error(f"LLM API connection failed (network problem/URL error): {str(e)}")
         if model.strip() == "chatgpt_hkbu":
-            return "抱歉，HKBU API连接失败，请检查网络或联系管理员～"
+            return "Sorry, HKBU API connection failed, please check the network or contact the administrator~"
         else:
-            return "抱歉，金融智能体网络连接失败，请检查网络或稍后再试～"
+            return "Sorry, the financial agent network connection failed, please check the network or try again later~"
     except requests.exceptions.HTTPError as e:
-        # 捕获HTTP错误（如401=密钥错误，404=URL错误）
-        logger.error(f"LLM API HTTP错误：{e}，响应内容：{response.text if 'response' in locals() else '无'}")
+        # Capture HTTP errors (such as 401=wrong key, 404=wrong URL)
+        logger.error(f"LLM API HTTP error: {e}, response content: {response.text if 'response' in locals() else 'none'}")
         if "401" in str(e):
-            return "抱歉，金融智能体API密钥无效，请联系管理员～"
+            return "Sorry, the financial intelligence API key is invalid, please contact the administrator~"
         elif "404" in str(e):
-            return "抱歉，金融智能体API地址错误，请联系管理员～"
+            return "Sorry, the API address of the financial intelligence agent is wrong, please contact the administrator~"
         else:
-            return f"抱歉，金融智能体请求失败（错误码：{e.response.status_code}），请稍后再试～"
+            return f"Sorry, the financial agent request failed (error code: {e.response.status_code}), please try again later~"
     except Exception as e:
-        # 兜底异常（捕获所有未预期错误）
-        logger.error(f"LLM API调用未知错误：{str(e)}", exc_info=True)
-        return "抱歉，金融智能体运行出错，请稍后再试～"
+        # Catch exceptions (catch all unexpected errors)
+        logger.error(f"Unknown error in LLM API call: {str(e)}", exc_info=True)
+        return "Sorry, there was an error in the operation of the financial intelligence agent, please try again later~"
 
 
 

@@ -16,9 +16,9 @@ def write_bot_log(user_id: int, user_message: str, bot_response: str, llm_model:
         }).execute()
         return True
     except Exception as e:
-        print(f"日志写入失败：{e}")
+        print(f"write_bot_log failed：{e}")
         return False
 
-# 读取日志（可选，用于调试）
+
 def get_bot_logs(user_id: int):
     return supabase.table("bot_logs").select("*").eq("user_id", user_id).execute()
