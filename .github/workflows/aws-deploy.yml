@@ -1,0 +1,64 @@
+name: AWS ECR + EC2 Auto Deploy
+on:
+  push:
+    branches: [main]  
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 配置AWS凭证
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      # 登录AWS ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      # 构建Docker镜像
+      - name: Build and tag image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: financebot
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+      # 推送镜像到ECR
+      - name: Push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: financebot
+          IMAGE_TAG: latest
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      # 远程SSH到EC2，拉取新镜像并重启容器
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_PUBLIC_IP }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # 登录ECR
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            # 拉取新镜像
+            docker pull ${{ steps.login-ecr.outputs.registry }}/financebot:latest
+            # 停止并删除旧容器
+            docker rm -f financebot-container || true
+            # 运行新容器
+            docker run -d --name financebot-container \
+              -e TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+              -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+              -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} \
+              -e LLM_API_KEY=${{ secrets.LLM_API_KEY }} \
+              -e LLM_API_URL=${{ secrets.LLM_API_URL }} \
+              -e API_KEY=${{ secrets.API_KEY }} \
+              -e BASE_URL=${{ secrets.BASE_URL }} \
+              -e MODEL=${{ secrets.MODEL }} \
+              -e API_VER=${{ secrets.API_VER }} \
+              --restart=always \
+              ${{ steps.login-ecr.outputs.registry }}/financebot:latest

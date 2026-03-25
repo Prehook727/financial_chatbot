@@ -1,0 +1,7 @@
+python-telegram-bot==22.5
+urllib3==2.6.2
+requests==2.31.0
+python-dotenv==1.0.0
+akshare>=1.16.72
+yfinance>=1.2.0
+supabase>2.0.0
