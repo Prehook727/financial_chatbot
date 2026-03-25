@@ -1,3 +1,5 @@
+secrets.py
+
 # 环境变量目录
 .env
 
